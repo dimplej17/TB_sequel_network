@@ -288,7 +288,7 @@ filterGenes = function(x)
   row.names(geneInfo_Module[selectedGenes,])
 }
 modules = lapply(modNames,function(x) filterGenes(x))
-save(modules,modNames,file=paste0(resultsDirectory,"modules.RData"))
+save(modules, file = "modules.RData")
 
 ###########################################
 # 6. Visualizing modules with PC1 vs. PC2 #
@@ -319,8 +319,171 @@ color_by_group <- function(pca_x, xaxis, yaxis) {
     geom_text(label=pca_x$SampleID)
 }
 color_by_group(pca_x, "PC1", "PC2") 
-# pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-# color_by_group(pca_x, "PC1", "PC2") 
-# dev.off()
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2") 
+dev.off()
 
 # the same process is repeated for each module
+
+# for the red module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "red"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+
+# for the green module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "green"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+# for the black module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "black"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+# for the brown module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "brown"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+# for the blue module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "blue"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+# for the grey module
+load(file = paste0(resultsDirectory,"modules.RData"))
+module = "grey"
+column = match(module, modNames);
+moduleGenes = modules [[column]]
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
+    labs(x=xaxis, y=yaxis)+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()

@@ -5,8 +5,8 @@
 source('1_libraries.R')
 
 # Reading the data using the read_NPX()
-OD_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU Clinic_Student Assistant/R Studio_LMU_Student Assistant_TB/TB Sequel OD_NPX.xlsx")
-IF_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU Clinic_Student Assistant/R Studio_LMU_Student Assistant_TB/TB Sequel Inflammation_NPX.xlsx")
+OD_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU_Clinic_Student Assistant/IMPORTANT_files_for_Rproject/TB_Sequel_OD_NPX.xlsx")
+IF_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU_Clinic_Student Assistant/IMPORTANT_files_for_Rproject/TB_Sequel_Inflammation_NPX.xlsx")
 
 # Merging/stacking the 2 datasets
 merged_OD_IF_data <- rbind(OD_data_pass, IF_data_pass)
@@ -29,9 +29,13 @@ merged_OD_IF_data$Groups[grepl("m6$", merged_OD_IF_data$SampleID)] <- "m6"
 # Convert 'Groups' to a factor variable
 merged_OD_IF_data$Groups <- factor(merged_OD_IF_data$Groups, levels = c("m0", "m6"))
 
+
+
+
 # Unpaired MW test 
 MWtest_results <- olink_wilcox(df = merged_OD_IF_data,
                                variable = 'Groups')
+# save(MWtest_results, file = "MWtest_results_unpaired.RData")
 MWtest_results %>% filter(Adjusted_pval < 0.05) %>% select(UniProt) %>% print(n = 92)
 
 # Volcano Plot

@@ -69,6 +69,7 @@ names(markgroups) = moduleTab %>% rownames_to_column("node") %>%
 sublfcTab = lfcTab %>% column_to_rownames("node")
 V(g)$color <- getColor(sublfcTab[ V(g)$name,"lfc"])
 
+
 initcoords = moduleTab[V(g)$name,"mod"] %>% 
   sapply(function(x){
     switch(as.character(x), 
@@ -85,6 +86,7 @@ for(x in colnames(initcoords)){
 
 
 coords = layout_with_fr(g, coords = t(initcoords))
+dim(initcoords)
 
 e = as_edgelist(g, names = F)
 coords = qgraph.layout.fruchtermanreingold(e, vcount = vcount(g), groups = markgroups,
