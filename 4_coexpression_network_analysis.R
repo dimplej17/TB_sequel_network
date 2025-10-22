@@ -2,12 +2,23 @@
 # Co-expression Network Analysis #
 ##################################
 
-source('1_libraries.R')
-source('2_differential_gene_expression_analysis.R')
+library(tidyverse)
+library(OlinkAnalyze) 
+library(WGCNA)
+library(vroom)
+library(ggfortify)
+library(flashClust)
+library(ggplot2)
+
+basedir =  '/home/obaranov/projects/TBSequel/DimplesProject/'
 
 ####################################################################################
 # 1. Detecting and removing samples that are outliers in the dataset - perform PCA #
 ####################################################################################
+
+merged_OD_IF_data = vroom(paste0(basedir, '/FilteredData/mergedKits.csv'))
+numeric_data <- pivot_wider(merged_OD_IF_data, names_from = 'SampleID', id_cols = 'UniProt', values_from = c('NPX'))
+
 
 temp <- numeric_data %>% as.data.frame() %>% column_to_rownames("UniProt")
 # temp <- as.numeric(unlist(temp)) 
@@ -16,7 +27,7 @@ temp <- numeric_data %>% as.data.frame() %>% column_to_rownames("UniProt")
 matrix_pca <- as.matrix(temp) 
 
 # Removing coloumns containing missing values (coloumns -> samples)
-matrix_pca <-  matrix_pca[ , colSums(is.na(matrix_pca))==0]
+matrix_pca <-  matrix_pca[ , colSums(is.na(matrix_pca))==0] # thats an interesting way of doing it :D
 
 # Transpose the matrix so that the outliers are patients and not proteins
 matrix_pca <- t(matrix_pca)
@@ -28,6 +39,7 @@ dim(matrix_pca)
 # Standardize the Data. PCA requires data standardization. Standardize the variables in the dataset.
 standardized_data <- scale(matrix_pca)
 
+
 # Perform PCA
 pca_result <- prcomp(standardized_data) 
 
@@ -37,18 +49,34 @@ summary(pca_result)
 # Visualise PCA results
 autoplot(pca_result, label = TRUE) 
 
+
 merged_OD_IF_data %>% 
   filter(!str_detect(SampleID, 'CONTROL_SAMPLE')) %>% 
   olink_pca_plot(df = .,
-                 color_g = "QC_Warning", byPanel = TRUE)  
+                 color_g = "QC_Warning", byPanel = F, label_samples = T)  
+
+# there is one outlier imho 3222A1 m6, the behaviour comes from the OD panel
+matrix_pca = matrix_pca[rownames(matrix_pca) != '3222A1m6',]
+merged_OD_IF_data = merged_OD_IF_data[merged_OD_IF_data$SampleID != "3222A1m6",]
+write_delim(matrix_pca %>% as.data.frame() %>% rownames_to_column('SampleName'), paste0(basedir, '/FilteredData/scaledExpressionData_wo3222.csv'), delim = '\t')
+write_delim(merged_OD_IF_data, paste0(basedir, '/FilteredData/mergedKits_wo3222.csv'), delim = '\t')
+
+# rescale data 
+standardized_data <- scale(matrix_pca)
+# Perform PCA
+pca_result <- prcomp(standardized_data) 
+
+
 
 # Dendogram
 # Compute distances and hierarchical clustering
 dd <- dist(scale(matrix_pca), method = "euclidean")
-hc <- hclust(dd, method = "ward.D2")
+hc <- stats::hclust(dd, method = "ward.D2")
 
 # Putting the labels at the same height (hang = -1)
+# pdf(paste0(basedir, '/OutputData/tmp.pdf'))
 plot(hc, hang = -1, cex = 0.6) 
+# dev.off()
 
 ###########################################
 # 2. Choosing the soft-thresholding power #
@@ -59,6 +87,7 @@ plot(hc, hang = -1, cex = 0.6)
 sft <- pickSoftThreshold(
   matrix_pca, 
   dataIsExpr = TRUE,
+  moreNetworkConcepts = TRUE,
   powerVector = c(seq(1, 10, by = 1), seq(2, 20, by = 2)), 
   networkType = "unsigned")
 
@@ -66,6 +95,8 @@ sft <- pickSoftThreshold(
 fitIndices <- sft$fitIndices
 
 # Plotting the results
+# pdf(paste0(basedir, '/OutputData/tmp.pdf'))
+
 par(mfrow = c(1, 2)) 
 
 # Plot the scale-free topology fit index as a function of the soft-thresholding power
@@ -76,7 +107,6 @@ plot(fitIndices[,1], -sign(fitIndices[,3])*fitIndices[,2],
      main = "Scale independence",
 )
 text(fitIndices[,1], -sign(fitIndices[,3])*fitIndices[,2], 
-     labels = powers, 
      col = "red")
 abline(h = 0.85, col = "blue", lty = 2)
 
@@ -87,9 +117,8 @@ plot(fitIndices[,1], fitIndices[,5],
      type = "n",
      main = "Mean connectivity")
 text(fitIndices[,1], fitIndices[,5], 
-     labels = powers, 
      col = "red")
-
+# dev.off()
 #################################################################################
 # 3. Co-expression network construction and clustering the network into modules #
 #################################################################################
@@ -99,10 +128,12 @@ text(fitIndices[,1], fitIndices[,5],
 # Calculate network adjacency
 
 datExpr <- matrix_pca
-softPower <- 4
+softPower <- ifelse(is.na(sft$powerEstimate),4,sft$powerEstimate)
 adjacencyMat <- adjacency(datExpr, 
                           type = "signed hybrid", 
                           power = softPower)
+saveRDS(adjacencyMat,paste0(basedir, '/FilteredData/adjacency.RDS'))
+
 
 # Convert adjacency matrix to Topological Overlap matrix (TOM)
 TOM <- TOMsimilarity(adjacencyMat, TOMType="signed")
@@ -127,10 +158,12 @@ dynamicColors = labels2colors(dynamicMods)
 table(dynamicColors)
 
 # Plot the dendrogram and colors underneath
+# pdf(paste0(basedir, '/OutputData/tmp.pdf'))
 plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut",
                     dendroLabels = FALSE, hang = 0.03,
                     addGuide = TRUE, guideHang = 0.05,
                     main = "Gene dendrogram and module colors")
+# dev.off()
 
 ############################
 # 4. Merging close modules #
@@ -151,6 +184,7 @@ METree = flashClust(as.dist(MEDiss), method = "average")
 # Plot the result
 plot(METree, main = "Clustering of module eigengenes",
      xlab = "", sub = "")
+
 
 # Plot the cut line into the dendrogram
 MEDissThres = 0.25
@@ -184,12 +218,13 @@ plotDendroAndColors(geneTree, cbind(dynamicColors, mergedColors),
                     dendroLabels = FALSE, hang = 0.03,
                     addGuide = TRUE, guideHang = 0.05)
 
+
 # Rename to moduleColors
 moduleColors = mergedColors
 
 # Construct numerical labels corresponding to the colors
 colorOrder = c("grey", standardColors(50))
-moduleLabels = match(moduleColors, colorOrder) - 1
+moduleLabels = match(moduleColors, colorOrder)
 MEs = mergedMEs
 
 ############################################
@@ -208,11 +243,10 @@ MEs = orderMEs(MEs0)
 
 # Create the trait vector
 sample_grps_df = merged_OD_IF_data %>% select(c('SampleID','Groups'))
-duplicated(sample_grps_df)
 # sample_grps_df[!duplicated(sample_grps_df),]
 sample_grps_df = sample_grps_df[!duplicated(sample_grps_df),] %>% column_to_rownames('SampleID')
 datTraits = sample_grps_df[rownames(MEs),]
-moduleTraitCor = cor(MEs, as.numeric(datTraits), use = "all.obs")
+moduleTraitCor = cor(MEs, as.numeric(gsub('m','',datTraits)) , use = "all.obs")
 moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples)
 
 # Will display correlations and their p-values
@@ -221,7 +255,8 @@ textMatrix = paste(signif(moduleTraitCor, 2), "\n(",
 dim(textMatrix) = dim(moduleTraitCor)
 # par(mar = c(6, 8.5, 3, 3)); --> figure margins too large?
 # Display the correlation values within a heatmap plot
-dev.new(width = 10, height = 8)
+pdf(paste0(basedir, '/OutputData/ModuleTraitCorrelation.pdf'))
+# dev.new(width = 10, height = 8)
 labeledHeatmap(Matrix = moduleTraitCor,
                xLabels = "TB Progression",
                yLabels = names(MEs),
@@ -236,28 +271,33 @@ labeledHeatmap(Matrix = moduleTraitCor,
                cex.lab=0.9,
                zlim = c(-1,1),
                main = paste("Module-trait relationships"))
+dev.off()
 
 # Define variable group containing the group column of datTrait
 Group = as.data.frame(datTraits);
 names(Group) = "Group"
-
 # names (colors) of the modules
 modNames = substring(names(MEs), 3)
+# not quite sure why the gene modules are reverse engineered in this way
+# correlation between the gene expression to the eigengene of a module
 geneModuleMembership = as.data.frame(cor(datExpr, MEs, use = "p"));
 MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples));
 names(geneModuleMembership) = paste("MM", modNames, sep="");
 names(MMPvalue) = paste("p.MM", modNames, sep="");
-geneTraitSignificance = as.data.frame(cor(datExpr, as.numeric(Group$Group), use = "p"));
+# correlation of the gene expression to the group
+geneTraitSignificance = as.data.frame(cor(datExpr, as.numeric(gsub('m','',Group$Group)), use = "p"));
 GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples));
 names(geneTraitSignificance) = paste("GS.", names(Group), sep="");
 names(GSPvalue) = paste("p.GS.", names(Group), sep="");
 probes = colnames(datExpr)
 
+# here the genes are assigned to the initial modules again? Yes
 geneInfo0 = data.frame(Proteins = probes,
                        moduleColor = moduleColors,
                        geneTraitSignificance,
                        GSPvalue)
-modOrder = order(-abs(cor(MEs, as.numeric(Group$Group), use = "p")));
+modOrder = order(-abs(cor(MEs,  as.numeric(gsub('m','',Group$Group)), use = "p")));
+#  here the information on the correlation to other module eigengenes is added
 for (mod in 1:ncol(geneModuleMembership))
 {
   oldNames = names(geneInfo0)
@@ -266,14 +306,15 @@ for (mod in 1:ncol(geneModuleMembership))
   names(geneInfo0) = c(oldNames, paste("MM.", modNames[modOrder[mod]], sep=""),
                        paste("p.MM.", modNames[modOrder[mod]], sep=""))
 }
-geneOrder = order(geneInfo0$moduleColor, -abs(geneInfo0$GS.Group));
+# ordered by module (alphabetically I guess) and the association with the group
+geneOrder = order(geneInfo0$moduleColor, abs(geneInfo0$GS.Group), decreasing = T);
 geneInfo = geneInfo0[geneOrder, ]
 # resultsDirectory <- "./Results/"
 # if (!dir.exists(resultsDirectory)) {
 # dir.create(resultsDirectory, recursive = TRUE)
 # }
 
-# write.csv(geneInfo, file = paste0(resultsDirectory,"geneInfo.csv"))
+write_delim(geneInfo, file = paste0(basedir,"/OutputData/geneModuleAssociation.csv"), delim = '\t')
 # save(geneInfo,file=paste0(resultsDirectory,"geneInfo.RData"))
 
 
@@ -288,7 +329,10 @@ filterGenes = function(x)
   row.names(geneInfo_Module[selectedGenes,])
 }
 modules = lapply(modNames,function(x) filterGenes(x))
-save(modules, file = "modules.RData")
+tmp = modules
+names(tmp) = modNames
+
+saveRDS(tmp, file = paste0(basedir, "/FilteredData/modules.RDS") )
 
 ###########################################
 # 6. Visualizing modules with PC1 vs. PC2 #
@@ -296,146 +340,8 @@ save(modules, file = "modules.RData")
 
 # "In this section, we perform principal component analysis (PCA) on the expression profile of proteins of each module and use the first and the second principal components (PC1 and PC2) to show differences in protein levels."
 
-# for the turquoise module
-load(file = paste0(resultsDirectory,"modules.RData"))
-module = "turquoise"
-column = match(module, modNames);
-moduleGenes = modules [[column]]
-
-pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
-pca_x = pca$x[,1:2]
-pca_x = as.data.frame(pca_x)
-pca_x$SampleID = row.names(pca_x)
-pca_x$Groups <- "m0"
-pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
-pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
-
-color_by_group <- function(pca_x, xaxis, yaxis) {
-  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
-  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
-    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
-          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
-    labs(x=xaxis, y=yaxis)+
-    geom_text(label=pca_x$SampleID)
-}
-color_by_group(pca_x, "PC1", "PC2") 
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2") 
-dev.off()
-
-# the same process is repeated for each module
-
-# for the red module
-load(file = paste0(resultsDirectory,"modules.RData"))
-module = "red"
-column = match(module, modNames);
-moduleGenes = modules [[column]]
-
-pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
-pca_x = pca$x[,1:2]
-pca_x = as.data.frame(pca_x)
-pca_x$SampleID = row.names(pca_x)
-pca_x$Groups <- "m0"
-pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
-pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
-
-color_by_group <- function(pca_x, xaxis, yaxis) {
-  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
-  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
-    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
-          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
-    labs(x=xaxis, y=yaxis)+
-    geom_text(label=pca_x$SampleID)
-}
-color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2")
-dev.off()
-
-
-# for the green module
-load(file = paste0(resultsDirectory,"modules.RData"))
-module = "green"
-column = match(module, modNames);
-moduleGenes = modules [[column]]
-
-pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
-pca_x = pca$x[,1:2]
-pca_x = as.data.frame(pca_x)
-pca_x$SampleID = row.names(pca_x)
-pca_x$Groups <- "m0"
-pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
-pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
-
-color_by_group <- function(pca_x, xaxis, yaxis) {
-  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
-  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
-    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
-          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
-    labs(x=xaxis, y=yaxis)+
-    geom_text(label=pca_x$SampleID)
-}
-color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2")
-dev.off()
-
-# for the black module
-load(file = paste0(resultsDirectory,"modules.RData"))
-module = "black"
-column = match(module, modNames);
-moduleGenes = modules [[column]]
-
-pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
-pca_x = pca$x[,1:2]
-pca_x = as.data.frame(pca_x)
-pca_x$SampleID = row.names(pca_x)
-pca_x$Groups <- "m0"
-pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
-pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
-
-color_by_group <- function(pca_x, xaxis, yaxis) {
-  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
-  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
-    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
-          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
-    labs(x=xaxis, y=yaxis)+
-    geom_text(label=pca_x$SampleID)
-}
-color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2")
-dev.off()
-
-# for the brown module
-load(file = paste0(resultsDirectory,"modules.RData"))
-module = "brown"
-column = match(module, modNames);
-moduleGenes = modules [[column]]
-
-pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
-pca_x = pca$x[,1:2]
-pca_x = as.data.frame(pca_x)
-pca_x$SampleID = row.names(pca_x)
-pca_x$Groups <- "m0"
-pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
-pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
-
-color_by_group <- function(pca_x, xaxis, yaxis) {
-  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
-  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
-    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
-          axis.text = element_blank(),panel.border = element_rect(colour = module, fill=NA, size=3)) +
-    labs(x=xaxis, y=yaxis)+
-    geom_text(label=pca_x$SampleID)
-}
-color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2")
-dev.off()
-
-# for the blue module
-load(file = paste0(resultsDirectory,"modules.RData"))
+# for the turquoise module, the best negatively correlated 
+readRDS(file = paste0(basedir,"/FilteredData/modules.RDS"))
 module = "blue"
 column = match(module, modNames);
 moduleGenes = modules [[column]]
@@ -456,13 +362,15 @@ color_by_group <- function(pca_x, xaxis, yaxis) {
     labs(x=xaxis, y=yaxis)+
     geom_text(label=pca_x$SampleID)
 }
-color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
-color_by_group(pca_x, "PC1", "PC2")
+color_by_group(pca_x, "PC1", "PC2") 
+pdf(paste0(basedir, "/OutputData/",module,".pdf"))
+color_by_group(pca_x, "PC1", "PC2") 
 dev.off()
 
-# for the grey module
-load(file = paste0(resultsDirectory,"modules.RData"))
+# the same process is repeated for each module
+
+# for the magenta module, the best positively correlated 
+readRDS(file = paste0(basedir,"/FilteredData/modules.RDS"))
 module = "grey"
 column = match(module, modNames);
 moduleGenes = modules [[column]]
@@ -484,6 +392,56 @@ color_by_group <- function(pca_x, xaxis, yaxis) {
     geom_text(label=pca_x$SampleID)
 }
 color_by_group(pca_x, "PC1", "PC2")
-pdf(paste0("../R Studio_LMU_Student Assistant_TB/Results/",module,".pdf"))
+pdf(paste0(basedir,"/OutputData/",module,".pdf"))
 color_by_group(pca_x, "PC1", "PC2")
 dev.off()
+
+
+# for the magenta module, the best positively+negatively correlated 
+readRDS(file = paste0(basedir,"/FilteredData/modules.RDS"))
+columnM = match('blue', modNames);
+columnT = match('grey', modNames);
+genesM = modules [[columnM]]
+genesT = modules [[columnT]]
+moduleGenes = c(genesM, genesT)
+
+
+pca <- prcomp(standardized_data[,moduleGenes], scale=TRUE)
+pca_x = pca$x[,1:2]
+pca_x = as.data.frame(pca_x)
+pca_x$SampleID = row.names(pca_x)
+pca_x$Groups <- "m0"
+pca_x$Groups[grepl("m6$", pca_x$SampleID)] <- "m6"
+pca_x$Groups <- factor(pca_x$Groups, levels = c("m0", "m6"))
+
+color_by_group <- function(pca_x, xaxis, yaxis) {
+  p <- ggplot(pca_x, aes(y = .data[[yaxis]], x = .data[[xaxis]]))
+  p + geom_point(aes(color=Groups,size=4)) + theme_bw() +
+    theme(legend.title = element_blank(), legend.position="none", axis.title = element_blank(),
+          axis.text = element_blank()) +
+    labs(x=xaxis, y=yaxis, title = 'Blue+Grey')+
+    geom_text(label=pca_x$SampleID)
+}
+color_by_group(pca_x, "PC1", "PC2")
+pdf(paste0(basedir,"/OutputData/Blue+Grey.pdf"))
+color_by_group(pca_x, "PC1", "PC2")
+dev.off()
+
+
+###############################################
+### relationship between module and the kit ###
+###############################################
+
+geneTOkit = merged_OD_IF_data[c('UniProt','Assay','kit')] %>% unique()
+geneTOkit = geneTOkit %>% column_to_rownames('UniProt')
+geneTOkit['module'] = 'unassigned' 
+
+for(m in seq_along(modules)){
+  # print(modNames[m])
+  geneTOkit[modules[[m]],'module'] = modNames[m]
+}
+
+p = ggplot(geneTOkit, aes(x=module, fill=kit)) +
+  geom_bar()
+
+ggsave(paste0(basedir,'/OutputData/kitPerModule.pdf'), plot = p)

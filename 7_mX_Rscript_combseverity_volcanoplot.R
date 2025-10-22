@@ -2,6 +2,7 @@
 # Volcano plot - combined severity - m0 #
 ########################################
 
+library(vroom)
 library(OlinkAnalyze)
 library(dplyr)
 library(tidyverse)
@@ -11,29 +12,10 @@ library(stringr)
 library(readxl)
 library(ggrepel)
 
-# Reading the data using the read_NPX()
-OD_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU Clinic_Student Assistant/R Studio_LMU_Student Assistant_TB/TB Sequel OD_NPX.xlsx")
-IF_data <- read_NPX("/Users/dimplejanardhan/Downloads/LMU Clinic_Student Assistant/R Studio_LMU_Student Assistant_TB/TB Sequel Inflammation_NPX.xlsx")
+basedir = '/home/obaranov/projects/TBSequel/DimplesProject/'
 
-# Merging/stacking the 2 datasets
-merged_OD_IF_data <- rbind(OD_data_pass, IF_data_pass)
+merged_OD_IF_data = vroom(paste0(basedir, '/FilteredData/mergedKits_wo3222.csv'))
 
-# Removing all controls and observations that have not passed the QC, that are below the LOD, and observations with no UniProt IDs. 
-controls_to_remove <- c("CGctrl", "IPC", "IPC-3", "KHctrl", "SC", "SC_02", "SRctrl", "IPC_03", "CBctrl")
-
-merged_OD_IF_data <- merged_OD_IF_data %>% 
-  filter(QC_Warning == "Pass") %>%
-  filter(UniProt != "-") %>%
-  filter(MaxLOD >= 0.2) %>%
-  filter(!SampleID %in% controls_to_remove)
-
-# Creating the coloumn "Groups" - m0 & m6
-merged_OD_IF_data$Groups <- "m0"
-
-# Assign 'm6' to sample IDs ending with 'm6'
-merged_OD_IF_data$Groups[grepl("m6$", merged_OD_IF_data$SampleID)] <- "m6"
-
-# Convert 'Groups' to a factor variable
 merged_OD_IF_data$Groups <- factor(merged_OD_IF_data$Groups, levels = c("m0", "m6"))
 
 # Create PersID coloumn from the SampleID
@@ -52,40 +34,52 @@ merged_OD_IF_data$Site <- factor(merged_OD_IF_data$Site, levels = c("MMRC Tz", "
 # Keeping samples only from Tanzania and m0
 merged_OD_IF_data <- merged_OD_IF_data %>% 
   filter(Site == "MMRC Tz") %>%
-  filter(Groups == "m0")
+  filter(Groups == "m6")
 
 # Read the clinical data
-clinical_data <- read_excel("TBS_ClinData.xlsx")
-
-# Keeping samples only from Tanzania
-clinical_data <- clinical_data %>% 
-  filter(SiteID == "MMRC Tz")
-
-# Limiting to the timepoint "m0" and removing variables not required for the volcano plot
-clinical_data <- clinical_data[ , c(1, 59)] # 1 -PersID; 59 - comb_sev_Mth_06; 56 - comb_sev_Baseline
-clinical_data <- clinical_data %>%
-  rename(comb_sev_m6 = comb_sev_Mth_06)
-
-# Grouping Normal & Mild under "Good" and Moderate & Severe under "Bad"
-clinical_data$comb_sev_m6[grepl("Moderate|Severe", clinical_data$comb_sev_m6)] <- "Bad"
-clinical_data$comb_sev_m6[grepl("Normal|Mild", clinical_data$comb_sev_m6)] <- "Good"
+clinical_data <- read_excel(paste0(basedir,"/RawData/CurTabForOlink.xlsx"))
+clinical_data = clinical_data %>% filter(visit_number_unified == "Mth 06")
+clinical_data['spiroSeverity'] = ''
+mixsev = clinical_data$mixed_severity == 'severe'
+mixsev[is.na(mixsev)] = FALSE
+noimp = clinical_data$combined_severity == "none"
+noimp[is.na(noimp)] = FALSE
+clinical_data[mixsev,'spiroSeverity'] = 'mixedsevere'
+clinical_data[noimp,'spiroSeverity'] = 'none'
+# clinical_data = clinical_data[clinical_data$spiroSeverity != "",]
 
 # Convert 'comb_sev_m6' to a factor variable
-clinical_data$comb_sev_m6 <- factor(clinical_data$comb_sev_m6, levels = c("Bad", "Good"))
+clinical_data$spiroSeverity <- factor(clinical_data$spiroSeverity, levels = c("none", "mixedsevere"))
+clinical_data['broadSevGroup'] = 'good'
+clinical_data[grepl('severe|moderate',clinical_data$combined_severity),'broadSevGroup'] = 'bad'
 
 # Merge the two data frames by 'SampleID'
-merged_OD_IF_data <- merge(merged_OD_IF_data, clinical_data[, c("PersID", "comb_sev_m6")], by = "PersID", all.x = TRUE)
+mergedkits_meta <- merge(merged_OD_IF_data, clinical_data[, c("person_id_complete", "broadSevGroup", "spiroSeverity")], by.x = "PersID", by.y = "person_id_complete", all.x = TRUE)
 
+
+
+mergedkits_meta = mergedkits_meta[!is.na(mergedkits_meta$spiroSeverity),]
 ##########################################
 # Differential gene expression analysis #
 #########################################
-m0_MWtest_results <- olink_wilcox(df = merged_OD_IF_data,
-                                        variable = 'comb_sev_m6')  
+m0_MWtest_results <- olink_wilcox(df = mergedkits_meta,
+                                        variable = 'spiroSeverity')  
+
+m0_MWtest_results = merge( m0_MWtest_results, 
+      merged_OD_IF_data[c('Assay','kit')] %>% unique(), by = 'Assay')
+m0_MWtest_results['logp'] = m0_MWtest_results$p.value %>%
+          sapply(function(x){-1*log10(x)})
+
+
+ggplot(data = m0_MWtest_results, aes(x = estimate, y = logp, label = Assay, color = kit)) + 
+    geom_point() + geom_text_repel() 
+
 
 olinkvolcano_plot <- olink_volcano_plot(m0_MWtest_results,
                                         x_lab = "log2FC")
+
 olinkvolcano_plot +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "blue") +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "blue") +
   geom_vline(xintercept = c(-0.5, 0.5), linetype = "dashed", color = "red") +
   geom_text_repel(data = subset(m0_MWtest_results, abs(estimate) > 0.5), aes(label = Assay), size = 3, box.padding = 0.3  , point.padding = 0.3) +
   labs(title = "Differential Expression Analysis at m0 by Lung Function Severity")
